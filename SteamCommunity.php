@@ -8,6 +8,9 @@
 
 namespace waylaidwanderer\SteamCommunity;
 
+use GuzzleHttp\Client;
+use GuzzleHttp\Cookie\CookieJar;
+use GuzzleHttp\Cookie\FileCookieJar;
 use phpseclib\Crypt\RSA;
 use phpseclib\Math\BigInteger;
 use waylaidwanderer\SteamCommunity\Enum\CreateAccountResult;
@@ -86,7 +89,7 @@ class SteamCommunity
      * Login with the set username and password.
      * @param bool $mobile Set to true to login as a mobile user.
      * @param bool $relogin Set to true to force a fresh login session.
-     * @return LoginResult
+     * @return string
      * @throws SteamException Thrown when Steam gives an unexpected response (e.g. Steam is down/having issues)
      */
     public function doLogin($mobile = false, $relogin = false)
@@ -221,40 +224,21 @@ class SteamCommunity
 
     public function cURL($url, $ref = null, $postData = null)
     {
-        $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, $url);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
-        curl_setopt ($ch, CURLOPT_SSL_VERIFYPEER, 0);
-        curl_setopt ($ch, CURLOPT_SSL_VERIFYHOST, 0);
+        $config = [
+            'base_uri' => $url
+        ];
+
         if (!empty($this->rootDir)) {
-            curl_setopt($ch, CURLOPT_COOKIEFILE, $this->_getCookieFilePath());
-            curl_setopt($ch, CURLOPT_COOKIEJAR, $this->_getCookieFilePath());
+            $jar = new FileCookieJar($this->_getCookieFilePath());
+            $config['cookies'] = $jar;
         }
-        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, 1);
-        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
-        if ($this->mobile) {
-            curl_setopt($ch, CURLOPT_HTTPHEADER, ["X-Requested-With: com.valvesoftware.android.steam.community"]);
-            curl_setopt($ch, CURLOPT_USERAGENT, "Mozilla/5.0 (Linux; U; Android 4.1.1; en-us; Google Nexus 4 - 4.1.1 - API 16 - 768x1280 Build/JRO03S) AppleWebKit/534.30 (KHTML, like Gecko) Version/4.0 Mobile Safari/534.30");
-            curl_setopt($ch, CURLOPT_COOKIE, $this->buildCookie(self::$DEFAULT_MOBILE_COOKIES));
-        } else {
-            curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0 (Windows NT 6.3; WOW64; rv:27.0) Gecko/20100101 Firefox/27.0');
+
+        if (!empty($ref)) {
+            $config['headers']['Referer'] = $ref;
         }
-        if (isset($ref)) {
-            curl_setopt($ch, CURLOPT_REFERER, $ref);
-        }
-        if (isset($postData)) {
-            curl_setopt($ch, CURLOPT_POST, true);
-            $postStr = "";
-            foreach ($postData as $key => $value) {
-                if ($postStr)
-                    $postStr .= "&";
-                $postStr .= $key . "=" . $value;
-            }
-            curl_setopt($ch, CURLOPT_POSTFIELDS, $postStr);
-        }
-        $output = curl_exec($ch);
-        curl_close($ch);
-        return $output;
+        $client = new Client($config);
+
+        return $client->post('', ['json' => $postData]);
     }
 
     private function buildCookie($cookie) {
